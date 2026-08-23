@@ -1,0 +1,44 @@
+version: "3.9"
+services:
+  db:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: app
+      POSTGRES_PASSWORD: app
+      POSTGRES_DB: ccompiler
+    ports: ["5432:5432"]
+    volumes: ["pgdata:/var/lib/postgresql/data"]
+
+  redis:
+    image: redis:7
+    ports: ["6379:6379"]
+
+  # Built once; the backend spawns short-lived containers FROM this image
+  # for every compile/run (it does not run as a long-lived service).
+  sandbox-image:
+    build: ./backend/sandbox-image
+    image: c-compiler-sandbox:latest
+    entrypoint: ["true"] # never actually runs long-lived; just builds & tags
+
+  backend:
+    build: ./backend
+    environment:
+      DATABASE_URL: postgresql://app:app@db:5432/ccompiler
+      REDIS_URL: redis://redis:6379
+      JWT_SECRET: change-me-in-prod
+      GEMINI_API_KEY: ${GEMINI_API_KEY}
+      SANDBOX_IMAGE: c-compiler-sandbox:latest
+    ports: ["4000:4000"]
+    depends_on: [db, redis, sandbox-image]
+    # Mounts the host docker socket so the backend can launch sandbox
+    # containers as SIBLINGS (not nested) - standard docker-out-of-docker pattern.
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  frontend:
+    build: ./frontend
+    ports: ["5173:5173"]
+    depends_on: [backend]
+
+volumes:
+  pgdata:
