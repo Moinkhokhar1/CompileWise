@@ -282,3 +282,25 @@ terminal tab and confirm `curl localhost:4000/api/health` returns
 The running backend is missing the auth routes — usually means you're
 running an older copy of the code. Re-check that `backend/src/routes/auth.ts`
 exists and is wired into `backend/src/index.ts`.
+
+## 🤝 Contributing
+
+Pull requests are welcome! For major changes, please open an issue first to discuss what you'd like to change.
+
+---
+
+## 📄 License
+
+© 2026 moinworksonlocalhost. All rights reserved.
+
+This project is **not open source**. No part of this codebase may be copied, modified, distributed, or used without explicit written permission from the author.
+
+---
+
+<div align="center">
+
+**Built with ❤️ by [Moinworksonlocalhost](https://moinworksonlocalhost.onrender.com/)**
+
+*Making payments accessible everywhere — even without a single bar of signal.*
+
+</div>
