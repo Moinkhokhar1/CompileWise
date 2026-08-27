@@ -68,16 +68,20 @@ export function parseGccDiagnostics(raw: string): ParsedDiagnostic[] {
         .map((l) => JSON.parse(l));
     }
   } catch {
-    // Diagnostics weren't valid JSON (e.g. a fatal error before parsing began).
-    // Return an "other" bucket so the caller still has something to show.
+    // Diagnostics weren't valid JSON — typically a linker error, since `ld`
+    // writes plain text (gcc's own "[]" empty-array JSON for a successful
+    // compile ends up prefixed onto it). Strip that prefix and detect the
+    // linker case specifically so it gets its own diagram instead of "other".
+    const cleaned = trimmed.replace(/^\[\]\s*/, "").trim();
+    const isLinkerError = /undefined reference to/i.test(cleaned);
     return [
       {
         kind: "error",
-        message: raw.slice(0, 2000),
+        message: cleaned.slice(0, 2000) || raw.slice(0, 2000),
         file: "main.c",
         line: 1,
         column: 1,
-        category: "other",
+        category: isLinkerError ? "linker" : "other",
       },
     ];
   }
