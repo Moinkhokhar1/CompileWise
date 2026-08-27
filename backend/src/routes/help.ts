@@ -39,12 +39,23 @@ helpRouter.post("/hint", requireAuth, requireRole("STUDENT"), async (req: Authed
   const diagnostics = parseGccDiagnostics(attempt.compilerRawJson);
   const previousHints = attempt.hintUsages.map((h) => h.content);
 
-  const content = await generateHint(
-    attempt.submission.code,
-    diagnostics,
-    nextLevel as 1 | 2 | 3,
-    previousHints
-  );
+  // Only record the HintUsage once we have a complete hint - a truncated or
+  // failed generation must not burn one of the student's limited hints.
+  let content: string;
+  try {
+    content = await generateHint(
+      attempt.submission.code,
+      diagnostics,
+      nextLevel as 1 | 2 | 3,
+      previousHints
+    );
+  } catch (err) {
+    console.error("generateHint failed:", err);
+    return res.status(503).json({
+      error: "Hint unavailable",
+      message: "The AI tutor didn't return a complete hint. Please try again — this didn't use up a hint.",
+    });
+  }
 
   const hint = await prisma.hintUsage.create({
     data: { attemptId: attempt.id, level: nextLevel, content },
@@ -86,11 +97,21 @@ helpRouter.post("/ai-patch", requireAuth, requireRole("STUDENT"), async (req: Au
   }
 
   const diagnostics = parseGccDiagnostics(attempt.compilerRawJson);
-  const result = await generatePatch(
-    attempt.submission.code,
-    diagnostics,
-    attempt.hintUsages.map((h) => h.content)
-  );
+  let result;
+  try {
+    result = await generatePatch(
+      attempt.submission.code,
+      diagnostics,
+      attempt.hintUsages.map((h) => h.content)
+    );
+  } catch (err) {
+    // Express 4 doesn't catch async rejections, so an uncaught throw here would
+    // leave the student's request hanging instead of failing.
+    console.error("generatePatch failed:", err);
+    return res.status(503).json({
+      error: "The AI tutor didn't return a complete fix. Please try again.",
+    });
+  }
 
   const saved = await prisma.aiPatch.create({
     data: {
