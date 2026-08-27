@@ -142,6 +142,12 @@ hints already given: ${previousHints.join(" | ")}
 Respond ONLY with JSON, no markdown fences:
 {"patched_code": string, "reasoning": string, "concept_reinforced": string}`;
 
-  const text = await callGemini(system, buildContext(code, diagnostics), { json: true, maxTokens: 1200 });
-  return JSON.parse(text.replace(/```json|```/g, "").trim());
+  // Highest budget of the three: this one returns whole patched source, so the
+  // visible payload is genuinely large on top of the thinking pass.
+  const text = await callGemini(system, buildContext(code, diagnostics), {
+    json: true,
+    maxTokens: 8192,
+    label: "generatePatch",
+  });
+  return parseJson<{ patched_code: string; reasoning: string; concept_reinforced: string }>(text, "generatePatch");
 }
