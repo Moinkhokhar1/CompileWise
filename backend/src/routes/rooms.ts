@@ -34,7 +34,7 @@ roomsRouter.post("/", requireAuth, requireRole("FACULTY"), async (req: AuthedReq
 roomsRouter.get("/mine", requireAuth, requireRole("FACULTY"), async (req: AuthedRequest, res) => {
   const rooms = await prisma.room.findMany({
     where: { facultyId: req.user!.id },
-    include: { problems: { select: { id: true, title: true, description: true, starterCode: true } } },
+    include: { problems: { select: { id: true, title: true, description: true, starterCode: true, language: true } } },
     orderBy: { createdAt: "desc" },
   });
   res.json(rooms);

@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { authedFetch, AuthUser } from "../api";
+import { Language, STARTER_TEMPLATES, LANGUAGE_INFO } from "../languages";
 
-interface Problem { id: string; title: string; description: string; starterCode: string; }
+interface Problem { id: string; title: string; description: string; starterCode: string; language: Language; }
 interface Room { id: string; title: string; code: string; problems: Problem[]; }
 
 export default function FacultyScreen({ user }: { user: AuthUser }) {
@@ -13,7 +14,8 @@ export default function FacultyScreen({ user }: { user: AuthUser }) {
   const [showNewProblem, setShowNewProblem] = useState(false);
   const [problemTitle, setProblemTitle] = useState("");
   const [problemDesc, setProblemDesc] = useState("");
-  const [starterCode, setStarterCode] = useState("#include <stdio.h>\n\nint main() {\n    \n    return 0;\n}\n");
+  const [problemLanguage, setProblemLanguage] = useState<Language>("C");
+  const [starterCode, setStarterCode] = useState(STARTER_TEMPLATES.C);
 
   const [progress, setProgress] = useState<any>(null);
   const [loadingProgress, setLoadingProgress] = useState(false);
@@ -43,12 +45,25 @@ export default function FacultyScreen({ user }: { user: AuthUser }) {
     if (!selectedRoomId || !problemTitle.trim()) return;
     await authedFetch(user.token, "/api/problems", {
       method: "POST",
-      body: JSON.stringify({ roomId: selectedRoomId, title: problemTitle, description: problemDesc, starterCode }),
+      body: JSON.stringify({
+        roomId: selectedRoomId,
+        title: problemTitle,
+        description: problemDesc,
+        starterCode,
+        language: problemLanguage,
+      }),
     });
     setProblemTitle("");
     setProblemDesc("");
+    setProblemLanguage("C");
+    setStarterCode(STARTER_TEMPLATES.C);
     setShowNewProblem(false);
     await loadRooms();
+  }
+
+  function handleLanguageChange(lang: Language) {
+    setProblemLanguage(lang);
+    setStarterCode(STARTER_TEMPLATES[lang]);
   }
 
   async function loadProgress() {
@@ -121,7 +136,10 @@ export default function FacultyScreen({ user }: { user: AuthUser }) {
           <h2 style={{ marginTop: 32 }}>{selectedRoom.title} — problems</h2>
           {selectedRoom.problems.map((p) => (
             <div key={p.id} className="card">
-              <strong>{p.title}</strong>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <strong>{p.title}</strong>
+                <span className="chip">{LANGUAGE_INFO[p.language]?.label ?? p.language}</span>
+              </div>
               <p style={{ fontSize: 13, color: "#64748b" }}>{p.description}</p>
             </div>
           ))}
@@ -132,6 +150,12 @@ export default function FacultyScreen({ user }: { user: AuthUser }) {
             <div className="card">
               <input placeholder="Problem title" value={problemTitle} onChange={(e) => setProblemTitle(e.target.value)} />
               <textarea placeholder="Description" value={problemDesc} onChange={(e) => setProblemDesc(e.target.value)} style={{ height: 70 }} />
+              <label style={{ fontSize: 13, fontWeight: 600, color: "#475569", display: "block", marginBottom: 6 }}>Language</label>
+              <select value={problemLanguage} onChange={(e) => handleLanguageChange(e.target.value as Language)}>
+                {(Object.keys(LANGUAGE_INFO) as Language[]).map((lang) => (
+                  <option key={lang} value={lang}>{LANGUAGE_INFO[lang].label}</option>
+                ))}
+              </select>
               <textarea value={starterCode} onChange={(e) => setStarterCode(e.target.value)} style={{ height: 120, fontFamily: "monospace" }} />
               <button className="btn-primary" onClick={createProblem}>Create problem</button>{" "}
               <button className="btn-secondary" onClick={() => setShowNewProblem(false)}>Cancel</button>

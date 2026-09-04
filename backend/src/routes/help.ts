@@ -3,7 +3,7 @@ import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth, requireRole, AuthedRequest } from "../middleware/auth";
 import { generateHint, generatePatch } from "../services/aiTutor";
-import { parseGccDiagnostics } from "../services/diagnosticsParser";
+import { parseDiagnostics } from "../services/diagnosticsParser";
 
 export const helpRouter = Router();
 
@@ -36,7 +36,7 @@ helpRouter.post("/hint", requireAuth, requireRole("STUDENT"), async (req: Authed
     return res.status(400).json({ error: "Hint levels only go up to 3" });
   }
 
-  const diagnostics = parseGccDiagnostics(attempt.compilerRawJson);
+  const diagnostics = parseDiagnostics(attempt.compilerRawJson, attempt.submission.problem.language);
   const previousHints = attempt.hintUsages.map((h) => h.content);
 
   // Only record the HintUsage once we have a complete hint - a truncated or
@@ -47,7 +47,8 @@ helpRouter.post("/hint", requireAuth, requireRole("STUDENT"), async (req: Authed
       attempt.submission.code,
       diagnostics,
       nextLevel as 1 | 2 | 3,
-      previousHints
+      previousHints,
+      attempt.submission.problem.language
     );
   } catch (err) {
     console.error("generateHint failed:", err);
@@ -96,13 +97,14 @@ helpRouter.post("/ai-patch", requireAuth, requireRole("STUDENT"), async (req: Au
     return res.json(attempt.aiPatch); // idempotent - don't regenerate/re-log
   }
 
-  const diagnostics = parseGccDiagnostics(attempt.compilerRawJson);
+  const diagnostics = parseDiagnostics(attempt.compilerRawJson, attempt.submission.problem.language);
   let result;
   try {
     result = await generatePatch(
       attempt.submission.code,
       diagnostics,
-      attempt.hintUsages.map((h) => h.content)
+      attempt.hintUsages.map((h) => h.content),
+      attempt.submission.problem.language
     );
   } catch (err) {
     // Express 4 doesn't catch async rejections, so an uncaught throw here would

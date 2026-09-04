@@ -1,8 +1,9 @@
 import { useEffect, useState } from "react";
 import { authedFetch, API_BASE, AuthUser } from "../api";
 import CodeWorkspace from "../components/CodeWorkspace";
+import { Language, LANGUAGE_INFO } from "../languages";
 
-interface Problem { id: string; title: string; description: string; starterCode: string; }
+interface Problem { id: string; title: string; description: string; starterCode: string; language: Language; }
 interface Room { id: string; title: string; code: string; }
 
 const LAST_ROOM_KEY = "cc_last_room_code";
@@ -47,10 +48,14 @@ export default function StudentScreen({ user }: { user: AuthUser }) {
           ← Back to problems
         </button>
         <h3>{selected.title}</h3>
-        <p style={{ color: "#64748b" }}>{selected.description}</p>
+        <p style={{ color: "#64748b" }}>
+          {selected.description}{" "}
+          <span className="chip">{LANGUAGE_INFO[selected.language]?.label ?? selected.language}</span>
+        </p>
         <CodeWorkspace
           problemId={selected.id}
           starterCode={selected.starterCode}
+          language={selected.language}
           authToken={user.token}
           apiBase={API_BASE}
           maxHints={3}
@@ -79,7 +84,10 @@ export default function StudentScreen({ user }: { user: AuthUser }) {
           {problems.length === 0 && <p style={{ color: "#94a3b8" }}>No problems posted yet — check back soon.</p>}
           {problems.map((p) => (
             <div key={p.id} className="card">
-              <strong>{p.title}</strong>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <strong>{p.title}</strong>
+                <span className="chip">{LANGUAGE_INFO[p.language]?.label ?? p.language}</span>
+              </div>
               <p style={{ fontSize: 13, color: "#64748b" }}>{p.description}</p>
               <button className="btn-primary" onClick={() => setSelected(p)}>Open</button>
             </div>

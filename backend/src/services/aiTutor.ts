@@ -1,5 +1,6 @@
 import { FinishReason, GenerationConfig, GoogleGenerativeAI, SchemaType } from "@google/generative-ai";
 import { ParsedDiagnostic } from "./diagnosticsParser";
+import { Language, LANGUAGE_CONFIG } from "../sandbox/languages";
 
 const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || "");
 const MODEL = "gemini-3.6-flash"; // fast + cheap, good fit for hint/explain latency; swap to gemini-1.5-pro if you want stronger reasoning
@@ -8,11 +9,20 @@ const MODEL = "gemini-3.6-flash"; // fast + cheap, good fit for hint/explain lat
 // at all, which keeps this working on model versions that don't accept it.
 const THINKING_LEVEL = process.env.GEMINI_THINKING_LEVEL;
 
-function buildContext(code: string, diagnostics: ParsedDiagnostic[]) {
+const LANGUAGE_FENCE: Record<Language, string> = {
+  C: "c",
+  CPP: "cpp",
+  JAVA: "java",
+  PYTHON: "python",
+};
+
+function buildContext(code: string, diagnostics: ParsedDiagnostic[], language: Language) {
+  const langName = LANGUAGE_CONFIG[language].displayName;
+  const fence = LANGUAGE_FENCE[language];
   const errorLines = diagnostics
     .map((d) => `Line ${d.line}, Col ${d.column} [${d.kind}/${d.category}]: ${d.message}`)
     .join("\n");
-  return `Student's C code:\n\`\`\`c\n${code}\n\`\`\`\n\nCompiler diagnostics:\n${errorLines}`;
+  return `Student's ${langName} code:\n\`\`\`${fence}\n${code}\n\`\`\`\n\nCompiler diagnostics:\n${errorLines}`;
 }
 
 // Gemini returns response.text() as a single string; helper keeps the
@@ -81,8 +91,9 @@ function parseJson<T>(raw: string, label: string): T {
  * Returned as structured JSON so the frontend can render it inside the
  * error-visualization panel (not just as a paragraph).
  */
-export async function explainError(code: string, diagnostics: ParsedDiagnostic[]) {
-  const system = `You are a patient C programming tutor for first-semester students.
+export async function explainError(code: string, diagnostics: ParsedDiagnostic[], language: Language) {
+  const langName = LANGUAGE_CONFIG[language].displayName;
+  const system = `You are a patient ${langName} programming tutor for first-semester students.
 Given code and a compiler diagnostic, explain in simple, non-jargon language:
 1. What the error means in plain English
 2. Why it happened in THIS specific code (point to the exact construct)
@@ -92,7 +103,7 @@ Do NOT give the corrected code or the exact fix. Only build understanding.
 Respond ONLY with JSON, no markdown fences, no preamble:
 {"plain_explanation": string, "why_it_happened": string, "concept": string}`;
 
-  const text = await callGemini(system, buildContext(code, diagnostics), {
+  const text = await callGemini(system, buildContext(code, diagnostics, language), {
     json: true,
     maxTokens: 4096,
     label: "explainError",
@@ -108,15 +119,17 @@ export async function generateHint(
   code: string,
   diagnostics: ParsedDiagnostic[],
   level: 1 | 2 | 3,
-  previousHints: string[]
+  previousHints: string[],
+  language: Language
 ) {
+  const langName = LANGUAGE_CONFIG[language].displayName;
   const specificity = {
     1: "Very general — point only to the broad area/category of the problem (e.g. 'check your loop bounds'). Do not mention line numbers.",
     2: "More specific — point to the exact line and what kind of mistake is likely there, without stating the fix.",
     3: "Strongly guiding — describe almost exactly what needs to change conceptually, but still do not write the corrected code.",
   }[level];
 
-  const system = `You are a C tutor giving hint level ${level} of 3 to a first-semester student.
+  const system = `You are a ${langName} tutor giving hint level ${level} of 3 to a first-semester student.
 Specificity for this level: ${specificity}
 Never provide corrected code. Keep it to 1-3 sentences.
 Previous hints already given (do not repeat them): ${previousHints.join(" | ") || "none"}
@@ -124,7 +137,7 @@ Respond with plain text only, no JSON, no markdown.`;
 
   // 2048 is far more than 1-3 sentences needs; the headroom is for the model's
   // thinking pass, which bills against the same budget.
-  const text = await callGemini(system, buildContext(code, diagnostics), {
+  const text = await callGemini(system, buildContext(code, diagnostics, language), {
     maxTokens: 2048,
     label: `generateHint(level ${level})`,
   });
@@ -135,8 +148,9 @@ Respond with plain text only, no JSON, no markdown.`;
  * Final AI patch after all hints are exhausted and the error persists.
  * Still includes reasoning, not just the diff, to keep it pedagogical.
  */
-export async function generatePatch(code: string, diagnostics: ParsedDiagnostic[], previousHints: string[]) {
-  const system = `You are a C tutor. The student has used all 3 hints and is still stuck.
+export async function generatePatch(code: string, diagnostics: ParsedDiagnostic[], previousHints: string[], language: Language) {
+  const langName = LANGUAGE_CONFIG[language].displayName;
+  const system = `You are a ${langName} tutor. The student has used all 3 hints and is still stuck.
 Provide a minimal fix and a short explanation of why it works, tied back to the
 hints already given: ${previousHints.join(" | ")}
 Respond ONLY with JSON, no markdown fences:
@@ -144,7 +158,7 @@ Respond ONLY with JSON, no markdown fences:
 
   // Highest budget of the three: this one returns whole patched source, so the
   // visible payload is genuinely large on top of the thinking pass.
-  const text = await callGemini(system, buildContext(code, diagnostics), {
+  const text = await callGemini(system, buildContext(code, diagnostics, language), {
     json: true,
     maxTokens: 8192,
     label: "generatePatch",

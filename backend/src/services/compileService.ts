@@ -1,5 +1,6 @@
 import { compileCode, runBinary, cleanupWorkDir } from "../sandbox/runner";
-import { parseGccDiagnostics, ParsedDiagnostic } from "./diagnosticsParser";
+import { parseDiagnostics, ParsedDiagnostic } from "./diagnosticsParser";
+import { Language } from "../sandbox/languages";
 import { prisma } from "../db";
 
 export interface CompileAndRunOutcome {
@@ -10,16 +11,17 @@ export interface CompileAndRunOutcome {
   stderr: string;
   crashed: boolean;
   timedOut: boolean;
-  resolved: boolean; // true if it compiled AND ran without crashing
+  resolved: boolean;
 }
 
 export async function compileAndRun(
   submissionId: string,
   code: string,
+  language: Language,
   stdinInput: string = ""
 ): Promise<CompileAndRunOutcome> {
-  const compileResult = await compileCode(code);
-  const diagnostics = parseGccDiagnostics(compileResult.diagnosticsJson);
+  const compileResult = await compileCode(code, language);
+  const diagnostics = parseDiagnostics(compileResult.diagnosticsJson, language);
 
   let stdout = "";
   let stderr = compileResult.stderr;
@@ -27,7 +29,7 @@ export async function compileAndRun(
   let timedOut = compileResult.timedOut;
 
   if (compileResult.success) {
-    const runResult = await runBinary(compileResult.workDir, stdinInput);
+    const runResult = await runBinary(compileResult.workDir, language, stdinInput);
     stdout = runResult.stdout;
     stderr += runResult.stderr;
     crashed = runResult.crashed;

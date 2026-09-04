@@ -31,7 +31,7 @@ export default function App() {
   return (
     <div>
       <header className="topbar">
-        <span className="brand">C Compiler Learning Platform</span>
+        <span className="brand">Code Learning Platform</span>
         <span className="topbar-user">
           {user.name} · {user.role === "FACULTY" ? "Faculty" : "Student"}
           <button className="btn-ghost" onClick={handleLogout}>Log out</button>

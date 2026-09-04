@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { prisma } from "../db";
 import { requireAuth, requireRole, AuthedRequest } from "../middleware/auth";
+import { isLanguage } from "../sandbox/languages";
 
 export const problemsRouter = Router();
 
@@ -10,6 +11,7 @@ const createProblemSchema = z.object({
   title: z.string().min(1),
   description: z.string().min(1),
   starterCode: z.string().default(""),
+  language: z.enum(["C", "CPP", "JAVA", "PYTHON"]).default("C"),
 });
 
 problemsRouter.post("/", requireAuth, requireRole("FACULTY"), async (req: AuthedRequest, res) => {
@@ -29,4 +31,8 @@ problemsRouter.get("/room/:roomId", requireAuth, async (req: AuthedRequest, res)
     orderBy: { createdAt: "asc" },
   });
   res.json(problems);
+});
+
+problemsRouter.get("/languages", requireAuth, (_req, res) => {
+  res.json(["C", "CPP", "JAVA", "PYTHON"].filter(isLanguage));
 });

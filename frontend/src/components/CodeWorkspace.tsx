@@ -1,6 +1,8 @@
 import { useRef, useState, useCallback } from "react";
 import Editor, { OnMount } from "@monaco-editor/react";
 import ErrorDiagram from "./ErrorDiagram";
+import InteractiveConsole from "./InteractiveConsole";
+import { Language, LANGUAGE_INFO } from "../languages";
 
 interface Diagnostic {
   kind: "error" | "warning" | "note";
@@ -23,6 +25,8 @@ interface SubmitResponse {
   submissionId: string;
   attemptId: string;
   resolved: boolean;
+  interactive?: boolean;
+  sessionId?: string;
   diagnostics: Diagnostic[];
   stdout: string;
   stderr: string;
@@ -47,16 +51,19 @@ const CATEGORY_LABELS: Record<string, string> = {
 export default function CodeWorkspace({
   problemId,
   starterCode,
+  language,
   authToken,
   apiBase,
   maxHints = 3,
 }: {
   problemId: string;
   starterCode: string;
+  language: Language;
   authToken: string;
   apiBase: string;
   maxHints?: number;
 }) {
+  const langInfo = LANGUAGE_INFO[language] ?? LANGUAGE_INFO.C;
   const editorRef = useRef<any>(null);
   const [code, setCode] = useState(starterCode);
   const [result, setResult] = useState<SubmitResponse | null>(null);
@@ -64,6 +71,8 @@ export default function CodeWorkspace({
   const [patch, setPatch] = useState<{ patchDiff: string; reasoning: string } | null>(null);
   const [loading, setLoading] = useState(false);
   const [showRawOutput, setShowRawOutput] = useState(false);
+  const [interactiveSessionId, setInteractiveSessionId] = useState<string | null>(null);
+  const [runOutput, setRunOutput] = useState("");
 
   const handleEditorMount: OnMount = (editor) => {
     editorRef.current = editor;
@@ -85,14 +94,45 @@ export default function CodeWorkspace({
     [apiBase, authToken]
   );
 
+  const handleInteractiveDone = useCallback(
+    (runResult: { stdout: string; stderr: string; crashed: boolean; timedOut: boolean }) => {
+      const combined = runResult.stdout + runResult.stderr;
+      setRunOutput(combined);
+      setInteractiveSessionId(null);
+      setResult((prev) =>
+        prev
+          ? {
+              ...prev,
+              stdout: runResult.stdout,
+              stderr: runResult.stderr,
+              crashed: runResult.crashed,
+              timedOut: runResult.timedOut,
+              resolved: !runResult.crashed && !runResult.timedOut,
+            }
+          : prev
+      );
+    },
+    []
+  );
+
   async function handleRun() {
     setLoading(true);
     setHints([]);
     setPatch(null);
     setShowRawOutput(false);
+    setInteractiveSessionId(null);
+    setRunOutput("");
     try {
-      const data: SubmitResponse = await authedFetch("/api/compile/submit", { problemId, code });
+      const data: SubmitResponse = await authedFetch("/api/compile/submit", {
+        problemId,
+        code,
+        interactive: true,
+      });
       setResult(data);
+
+      if (data.interactive && data.sessionId) {
+        setInteractiveSessionId(data.sessionId);
+      }
 
       if (editorRef.current) {
         const monaco = (window as any).monaco;
@@ -143,7 +183,7 @@ export default function CodeWorkspace({
     <div className="workspace-grid">
       <div className="editor-panel">
         <div className="editor-toolbar">
-          <span className="editor-toolbar-label">main.c</span>
+          <span className="editor-toolbar-label">{langInfo.filename}</span>
           <button className="btn-primary btn-run" onClick={handleRun} disabled={loading}>
             {loading ? (
               <>
@@ -156,7 +196,7 @@ export default function CodeWorkspace({
         </div>
         <Editor
           height="60vh"
-          defaultLanguage="c"
+          language={langInfo.monaco}
           value={code}
           onChange={(v) => setCode(v ?? "")}
           onMount={handleEditorMount}
@@ -172,14 +212,52 @@ export default function CodeWorkspace({
           </div>
         )}
 
-        {result?.resolved && (
+        {result?.resolved && interactiveSessionId && (
+          <div className="success-card">
+            <div className="panel-header success">
+              <span className="status-icon success-icon">✓</span>
+              <span>Compiled successfully — enter input below</span>
+            </div>
+            <InteractiveConsole
+              sessionId={interactiveSessionId}
+              authToken={authToken}
+              apiBase={apiBase}
+              onDone={handleInteractiveDone}
+            />
+          </div>
+        )}
+
+        {result?.resolved && !interactiveSessionId && (
           <div className="success-card">
             <div className="panel-header success">
               <span className="status-icon success-icon">✓</span>
               <span>Compiled and ran successfully</span>
             </div>
             <div className="terminal-box">
-              <pre>{result.stdout || "(no output)"}</pre>
+              <pre>{runOutput || result.stdout || "(no output)"}</pre>
+            </div>
+          </div>
+        )}
+
+        {!result?.resolved && !primaryError && result && (
+          <div className="error-card">
+            <div className="panel-header error">
+              <span className="status-icon error-icon">!</span>
+              <div>
+                <div className="panel-title">
+                  {result.timedOut ? "Program timed out" : result.crashed ? "Program crashed" : "Runtime error"}
+                </div>
+                <div className="panel-subtitle">
+                  {result.timedOut
+                    ? "The program may be waiting for input or running too long."
+                    : "The program exited with an error."}
+                </div>
+              </div>
+            </div>
+            <div className="panel-body">
+              <div className="terminal-box terminal-box-error">
+                <pre>{result.stdout || result.stderr || "(no output)"}</pre>
+              </div>
             </div>
           </div>
         )}
